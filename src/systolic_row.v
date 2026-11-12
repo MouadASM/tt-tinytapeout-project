@@ -5,7 +5,7 @@
 
 module systolic_row #(
     parameter num_cells= 4, // number of IPSPs (bandwidth of A)
-    parameter operand_width= 8, // operand width in bits
+    parameter operand_width= 4, // operand width in bits
     parameter accumulator_width= 2*operand_width + $clog2(num_cells) // fits num_cells products
 ) (
     input wire clk,
