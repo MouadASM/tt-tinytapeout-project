@@ -1,41 +1,25 @@
 /*
     project.v
-    Tiny Tapeout top level: a linear systolic row of shift-and-add IPSPs plus the controller
-    that moves operands and results through the 8-bit Tiny Tapeout pins.
-
-    One systolic step = 8 clock cycles (the IPSPs process one bit of b per cycle).
-    The step phase (0..7) is shown on uio_out[3:1], and uio_out[0] = 1 on phase 0.
-
-    Inputs: during step s, the host writes the operands for step s+1 on ui_in:
-        phase k (k = 0 .. num_cells-1): a for IPSP k
-        phase num_cells:                b (the vector element for IPSP 0)
-    They are held in registers and handed to the IPSPs on the next load cycle (phase 0).
-
-    Outputs: the result y(s) of step s (c_out of IPSP 0, 18 bits) is captured at the start of
-    step s+1 and sent on uo_out during step s+1:
-        phase 1: y[7:0]   phase 2: y[15:8]   phase 3: y[17:16], sign-extended to 8 bits
-
-    uio_in[4] = 1 pauses the whole design (all IPSPs and the controller).
 */
 `default_nettype none
 
 module tt_um_mouadasm_tinytapeout_project (
-    input  wire [7:0] ui_in,    // dedicated inputs: operand bytes
-    output wire [7:0] uo_out,   // dedicated outputs: result bytes
-    input  wire [7:0] uio_in,   // IOs: input path  (bit 4 = pause)
-    output wire [7:0] uio_out,  // IOs: output path (bit 0 = step start, bits 3:1 = phase)
-    output wire [7:0] uio_oe,   // IOs: enable path (1 = output)
-    input  wire       ena,      // 1 when this design is selected
-    input  wire       clk,      // clock
-    input  wire       rst_n     // active-low reset
+    input  wire [7:0] ui_in,    
+    output wire [7:0] uo_out,   
+    input  wire [7:0] uio_in,   
+    output wire [7:0] uio_out,  
+    output wire [7:0] uio_oe,   
+    input  wire ena,     
+    input  wire clk,      
+    input  wire rst_n    
 );
 
-    localparam num_cells         = 2;  // IPSPs in the row (bandwidth of A)
-    localparam operand_width     = 8;
+    localparam num_cells = 2;  // IPSPs in the row (bandwidth of A)
+    localparam operand_width = 8;
     localparam accumulator_width = 18;
-    localparam [2:0] b_phase     = num_cells[2:0]; // phase on which b is written
+    localparam [2:0] b_phase = num_cells[2:0];
 
-    // pause input, registered once so the IPSPs' clock gate sees a clean, clock-aligned signal
+    
     reg pause_r;
     always @(posedge clk) begin
         if (!rst_n) pause_r <= 1'b0;
@@ -43,8 +27,7 @@ module tt_um_mouadasm_tinytapeout_project (
     end
     wire en = ena & ~pause_r;
 
-    // step phase: counts 0..7 in lockstep with the IPSPs' own counters
-    // (both are reset together and both advance only when en = 1)
+    
     reg [2:0] phase;
     always @(posedge clk) begin
         if (!rst_n)  phase <= 3'd0;
@@ -53,7 +36,7 @@ module tt_um_mouadasm_tinytapeout_project (
 
     // holding registers: operands for the next step, collected one byte per cycle
     reg [num_cells*operand_width-1:0] hold_a;
-    reg [operand_width-1:0]           hold_b;
+    reg [operand_width-1:0] hold_b;
     integer k;
     always @(posedge clk) begin
         if (!rst_n) begin
@@ -66,23 +49,32 @@ module tt_um_mouadasm_tinytapeout_project (
         end
     end
 
-    // the systolic row
-    wire signed [accumulator_width-1:0] y;
-    wire signed [operand_width-1:0]     b_unused;
 
-    systolic_row #(
-        .num_cells         (num_cells),
-        .operand_width     (operand_width),
-        .accumulator_width (accumulator_width)
-    ) u_row (
+    wire signed [accumulator_width-1:0] y;        
+    wire signed [accumulator_width-1:0] c_link;  
+    wire signed [operand_width-1:0] b_link;   
+    wire signed [operand_width-1:0]  b_unused; 
+
+    ipsp_serial u_ipsp0 (
         .clk   (clk),
         .rst_n (rst_n),
         .en    (en),
-        .a_in  (hold_a),
+        .a_in  (hold_a[0 +: operand_width]),
         .b_in  (hold_b),
+        .c_in  (c_link),
+        .b_out (b_link),
+        .c_out (y)
+    );
+
+    ipsp_serial u_ipsp1 (
+        .clk   (clk),
+        .rst_n (rst_n),
+        .en    (en),
+        .a_in  (hold_a[operand_width +: operand_width]),
+        .b_in  (b_link),
         .c_in  ({accumulator_width{1'b0}}), // sums start at 0 on the right
         .b_out (b_unused),
-        .c_out (y)
+        .c_out (c_link)
     );
 
     // capture the finished result on the load cycle (phase 0), before the IPSPs overwrite it
