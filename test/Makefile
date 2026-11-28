@@ -6,7 +6,7 @@ SIM ?= icarus
 FST ?= -fst # Use more efficient FST format
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
-PROJECT_SOURCES = ipsp.v macros/ipsp_serial/rtl/ipsp_serial.v project.v systolic_row.v
+PROJECT_SOURCES = macros/ipsp_serial/rtl/ipsp_serial.v project.v
 
 ifneq ($(GATES),yes)
 
